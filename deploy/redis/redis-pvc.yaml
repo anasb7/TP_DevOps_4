@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: redis-data
+spec:
+  accessModes: ["ReadWriteOnce"]
+  # No storageClassName: minikube's default "standard" StorageClass is used
+  resources:
+    requests:
+      storage: 1Gi

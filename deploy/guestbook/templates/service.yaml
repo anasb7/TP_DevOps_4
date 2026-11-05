@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "guestbook.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "guestbook.labels" . | nindent 4 }}
+  ports:
+    # Named port: the ServiceMonitor selects the port by its name, not its number
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http

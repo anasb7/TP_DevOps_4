@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Release.Name }}
+  labels:
+    {{- include "guestbook.labels" . | nindent 4 }}
+data:
+  REDIS_HOST: {{ .Values.redis.host | quote }}
+  # Written in every log line: links an error to the version that produced it
+  APP_VERSION: {{ .Values.image.tag | quote }}

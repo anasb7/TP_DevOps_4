@@ -1,0 +1,37 @@
+replicaCount: 3
+
+image:
+  repository: guestbook
+  tag: v1.0.0
+  # Never: the image is loaded into minikube with `minikube image load`
+  pullPolicy: Never
+
+service:
+  type: ClusterIP
+  port: 3000
+
+
+redis:
+  # Redis lives in the "data" namespace: the short name "redis" only resolves inside "data"
+  host: redis.data.svc.cluster.local
+
+ingress:
+  enabled: true
+  # Ingress controller installed by `minikube addons enable ingress`
+  className: nginx
+  host: guestbook.local
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 32Mi
+  limits:
+    memory: 128Mi
+
+autoscaling:
+  enabled: true
+  # 3 pods even at rest, otherwise there is nothing to spread over the 2 nodes
+  minReplicas: 3
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 50
+
