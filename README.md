@@ -7,8 +7,10 @@ Ce dépôt contient tout ce qu'il faut pour déployer le guestbook, pour vous co
 - `guestbook/`: le code du guestbook `v1.0.0` et son Dockerfile. Il expose déjà des métriques (`/metrics`), des logs JSON et des traces OpenTelemetry (désactivées par défaut)
 - `deploy/namespaces.yaml` et `deploy/redis/`: les namespaces `guestbook` et `data`, et les manifests de Redis
 - `deploy/guestbook/`: le chart Helm du guestbook (probes, HPA, Ingress, ConfigMap)
+- `deploy/k6/`: le test de charge (Job k6, 17 minutes)
+- `deploy/monitoring/`: le point de départ de la PrometheusRule de l'exercice 5
 
-Rangez les ressources de monitoring que vous écrivez (ServiceMonitor, PrometheusRule, Probe...) dans un dossier `deploy/monitoring/`, et les fichiers de valeurs des charts que vous installez à côté.
+Rangez les ressources de monitoring que vous écrivez (ServiceMonitor, PrometheusRule, Probe...) dans `deploy/monitoring/`, et les fichiers de valeurs des charts que vous installez à côté.
 
 ## Fiche d'apprentissages
 
@@ -179,7 +181,12 @@ La méthode RED (Rate, Errors, Duration) résume la santé d'un service vue par 
    - **Rate**: requêtes par seconde, par handler
    - **Errors**: pourcentage de réponses 5xx
    - **Duration**: p50, p95 et p99 de la latence
-2. **Relancez le test de charge k6** du Jour 3 (Job dans le cluster) et observez le dashboard, ainsi que le HPA
+2. **Lancez le test de charge** fourni et observez le dashboard, ainsi que le HPA. Il dure 17 minutes: laissez-le tourner, il sert aussi aux exercices 5 et 6
+
+   ```bash
+   kubectl create configmap k6-script -n guestbook --from-file=deploy/k6/load-test.js
+   kubectl apply -f deploy/k6/k6-job.yaml
+   ```
 3. **Corrélez** avec les dashboards Kubernetes: quelle ressource sature en premier ?
 4. **Rendez dans votre doc** :
    - Une capture du dashboard **pendant** le test de charge, période visible (montée du rate, effet du HPA)
@@ -191,6 +198,7 @@ La méthode RED (Rate, Errors, Duration) résume la santé d'un service vue par 
 - `rate()` s'applique à un counter, sur une fenêtre au moins 4 fois plus longue que l'intervalle de scrape
 - `histogram_quantile()` s'applique à `sum by (le) (rate(..._bucket[5m]))`
 - Pourquoi un p99 plutôt qu'une moyenne ? Comparez les deux pendant la charge
+- Pour relancer le test: `kubectl delete job -n guestbook k6-load-test`, puis `kubectl apply` à nouveau
 
 ### Vérifications
 
@@ -209,13 +217,13 @@ Alerter sur chaque pic d'erreurs épuise l'équipe, alerter quand le budget du m
 1. **Définissez les SLO** du guestbook dans votre doc :
    - Disponibilité: 99% des requêtes sans erreur 5xx sur 30 jours
    - Latence: 95% des lectures et écritures de messages (`/lrange`, `/rpush`) en moins de 400 ms
-2. **Écrivez une PrometheusRule** (`deploy/monitoring/prometheusrule.yaml`) avec :
-   - des recording rules pour le taux d'erreur sur 5m, 30m, 1h et 6h
-   - deux alertes burn rate *multi-window* (rapide: 1h et 5m, lente: 6h et 30m), chacune avec une annotation `runbook_url`
-   - une alerte `GuestbookDown` basée sur `absent(up{...})`
-3. **Ajoutez une alerte sur la cause**, avec la gauge `guestbook_redis_up` fournie par le guestbook (mise à jour par `/healthz`)
+2. **Lisez la PrometheusRule fournie** (`deploy/monitoring/prometheusrule.yaml`): les recording rules du taux d'erreur sur 5m, 30m, 1h et 6h, et l'alerte burn rate rapide (1h et 5m). Que représente le `14.4` ?
+3. **Complétez-la** :
+   - l'alerte burn rate lente (6h et 30m), avec son annotation `runbook_url`
+   - une alerte `GuestbookDown`: toutes les instances du guestbook sont down, ou il n'y en a plus aucune
+   - une alerte sur la cause, avec la gauge `guestbook_redis_up` fournie par le guestbook (mise à jour par `/healthz`)
 4. **Configurez Alertmanager**: routez les alertes du namespace `guestbook` vers un receiver de votre choix (webhook, Slack, Discord...)
-5. **Provoquez l'alerte burn rate**: pendant un test k6, remplacez la liste des messages par une chaîne (`redis-cli set guestbook oops`). Suivez l'alerte de `inactive` à `pending` puis `firing`, puis sa résolution après `redis-cli del guestbook`
+5. **Provoquez l'alerte burn rate**: pendant le test k6, remplacez la liste des messages par une chaîne (`redis-cli set guestbook oops`). Suivez l'alerte de `inactive` à `pending` puis `firing`, puis sa résolution après `redis-cli del guestbook`
 6. **Coupez Redis** (0 replica): quelles alertes se déclenchent ? Que voient les utilisateurs, et que voient les métriques du guestbook ? Pourquoi ?
 
 ### Indices
@@ -223,6 +231,8 @@ Alerter sur chaque pic d'erreurs épuise l'équipe, alerter quand le budget du m
 - Taux d'erreur observé = burn rate × (100% - SLO): pour un SLO de 99% et un burn rate de 14,4, l'alerte rapide se déclenche à 14,4% d'erreurs
 - Les PrometheusRules doivent être sélectionnées par Prometheus: revoyez les valeurs de l'exercice 2
 - Le champ `for:` évite d'alerter sur un pic isolé
+- Une alerte ne sert que si elle arrive à Alertmanager avec le label sur lequel vous routez: vérifiez les labels de vos alertes dans Prometheus (`Alerts`), en particulier après un `sum`, un `max` ou un `absent()`
+- L'alerte rapide met quelques minutes à se déclencher, et autant à se résoudre: gardez le test k6 en cours pendant tout l'exercice
 - Les probes du kubelet et les scrapes de Prometheus ne sont pas des utilisateurs: excluez `/healthz` et `/metrics` de vos SLI
 - Sans receiver externe, [webhook.site](https://webhook.site) ou un simple pod `echo-server` font l'affaire
 - `amtool` (dans le pod Alertmanager) permet de tester le routage et de poser des silences
@@ -246,13 +256,15 @@ Nos alertes se déclenchent-elles vraiment ? Le guestbook survit-il vraiment à 
 1. **Installez Chaos Mesh** avec son chart Helm dans un namespace `chaos-mesh`
 2. **Écrivez votre hypothèse** dans votre doc: *"si un pod du guestbook est tué, le taux d'erreur reste sous 1% et aucune alerte ne se déclenche"*
 3. **Créez une expérience `PodChaos`** (`pod-kill`) qui cible un pod du guestbook, puis un `Schedule` qui la rejoue toutes les 2 minutes
-4. **Lancez le test de charge k6 en parallèle** et observez le dashboard RED et les alertes
+4. **Gardez le test de charge k6 en cours** (relancez-le si besoin) et observez le dashboard RED et les alertes
 5. **Concluez**: l'hypothèse est-elle vérifiée ? Sinon, corrigez (probes, replicas, Topology Spread Constraints...) et recommencez
-6. **Allez plus loin**: une expérience `NetworkChaos` qui ajoute 500 ms de latence vers Redis. Votre alerte de latence se déclenche-t-elle ?
+6. **Allez plus loin**: une expérience `NetworkChaos` qui ajoute 500 ms de latence aux réponses de Redis. Observez le panel Duration du dashboard: la latence affichée correspond-elle aux 500 ms injectés ? Pourquoi ?
 
 ### Indices
 
-- Le runtime de conteneurs de minikube est `docker` par défaut: regardez les valeurs `chaosDaemon.runtime` et `chaosDaemon.socketPath` du chart
+- Le chart suppose que les conteneurs tournent avec Docker. Vérifiez le runtime de vos nœuds (`kubectl get nodes -o wide`, colonne `CONTAINER-RUNTIME`) et adaptez les valeurs `chaosDaemon.runtime` et `chaosDaemon.socketPath`
+- Le guestbook joint Redis par l'adresse de son Service, pas par l'IP du pod: une `NetworkChaos` qui filtre sur l'IP du pod Redis côté guestbook n'aura aucun effet
+- Si une expérience reste bloquée à la suppression, regardez ses `finalizers`
 - Ciblez les pods avec `selector.labelSelectors` et `mode: one`
 - Limitez le *blast radius*: un seul namespace, une durée courte
 - Supprimez le `Schedule` à la fin de l'exercice
@@ -347,13 +359,14 @@ Les métriques internes (white-box) ne voient pas une panne de l'Ingress ou du D
 ### Comment
 
 1. **Installez `prometheus-blackbox-exporter`** avec son chart Helm
-2. **Créez une `Probe`** (CRD de l'opérateur Prometheus, dans `deploy/monitoring/`) qui teste `http://guestbook.local/healthz` via l'Ingress toutes les 30 s
+2. **Créez une `Probe`** (CRD de l'opérateur Prometheus, dans `deploy/monitoring/`) qui teste `http://guestbook.local/lrange/guestbook` via l'Ingress toutes les 30 s, comme le fait l'UI
 3. **Ajoutez une alerte** sur `probe_success == 0`
 4. **Cassez l'Ingress** (désactivez-le dans `values.yaml`): quelle alerte se déclenche, la vôtre ou celles de l'exercice 5 ?
 
 ### Indices
 
 - Le module `http_2xx` du blackbox exporter vérifie un code HTTP 2xx
+- Pourquoi ne pas tester `/healthz` ? Essayez avec l'Ingress désactivé
 - Depuis le cluster, `guestbook.local` doit résoudre vers l'Ingress controller: utilisez son Service comme cible et un header `Host`, ou ajoutez une entrée à CoreDNS
 
 ### Vérifications

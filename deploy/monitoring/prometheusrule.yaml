@@ -1,0 +1,60 @@
+# Starting point of exercise 5: complete the TODOs, then
+#   kubectl apply -f deploy/monitoring/prometheusrule.yaml
+#
+# SLOs of the guestbook
+#   availability: 99% of the requests without 5xx           => error budget 1%   (0.01)
+#   latency:      95% of /lrange + /rpush under 400 ms: followed on the dashboard (exercise 4), no alert
+# /healthz and /metrics are excluded: the kubelet and Prometheus are not users.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: guestbook
+  namespace: guestbook
+spec:
+  groups:
+    # Recording rules: computed once per evaluation, reused by the alerts and the dashboard.
+    # "by (namespace)" keeps the label Alertmanager routes on: a plain sum() would drop it
+    - name: guestbook-sli
+      rules:
+        - record: guestbook:sli_errors:ratio_rate5m
+          expr: |
+            sum by (namespace) (rate(http_requests_total{job="guestbook", namespace="guestbook", handler!~"/healthz|/metrics", code=~"5.."}[5m]))
+            /
+            sum by (namespace) (rate(http_requests_total{job="guestbook", namespace="guestbook", handler!~"/healthz|/metrics"}[5m]))
+        - record: guestbook:sli_errors:ratio_rate30m
+          expr: |
+            sum by (namespace) (rate(http_requests_total{job="guestbook", namespace="guestbook", handler!~"/healthz|/metrics", code=~"5.."}[30m]))
+            /
+            sum by (namespace) (rate(http_requests_total{job="guestbook", namespace="guestbook", handler!~"/healthz|/metrics"}[30m]))
+        - record: guestbook:sli_errors:ratio_rate1h
+          expr: |
+            sum by (namespace) (rate(http_requests_total{job="guestbook", namespace="guestbook", handler!~"/healthz|/metrics", code=~"5.."}[1h]))
+            /
+            sum by (namespace) (rate(http_requests_total{job="guestbook", namespace="guestbook", handler!~"/healthz|/metrics"}[1h]))
+        - record: guestbook:sli_errors:ratio_rate6h
+          expr: |
+            sum by (namespace) (rate(http_requests_total{job="guestbook", namespace="guestbook", handler!~"/healthz|/metrics", code=~"5.."}[6h]))
+            /
+            sum by (namespace) (rate(http_requests_total{job="guestbook", namespace="guestbook", handler!~"/healthz|/metrics"}[6h]))
+
+    - name: guestbook-slo
+      rules:
+        # Multi-window, multi-burn-rate (Google SRE Workbook):
+        # the long window proves it lasts, the short window lets the alert resolve quickly
+        - alert: GuestbookErrorBudgetBurnFast
+          expr: |
+            guestbook:sli_errors:ratio_rate1h > (14.4 * 0.01)
+            and
+            guestbook:sli_errors:ratio_rate5m > (14.4 * 0.01)
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: Guestbook burns its error budget fast (2% of the month in 1h)
+            description: "{{ $value | humanizePercentage }} of the requests fail."
+            runbook_url: https://github.com/<your-account>/devops-class-4/blob/main/runbooks/guestbook-error-budget-burn.md
+        # TODO: GuestbookErrorBudgetBurnSlow, 6x the budget over 6h and 30m, for: 15m, severity: warning
+
+    # TODO: a group "guestbook-health" with
+    #   - GuestbookDown: every guestbook target down, or no target at all
+    #   - an alert on the cause, with the gauge guestbook_redis_up

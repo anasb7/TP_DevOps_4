@@ -1,0 +1,28 @@
+# Runs the load test inside the cluster: no local k6 install, no tunnel,
+# and the traffic goes through the Service like real users
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-load-test
+  namespace: guestbook
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: k6
+          image: grafana/k6:1.0.0 # pinned: never use latest
+          # --quiet: no progress bar, otherwise the logs get one line per second
+          args: ["run", "--quiet", "/scripts/load-test.js"]
+          env:
+            - name: GUESTBOOK_URL
+              value: http://guestbook:3000
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+      volumes:
+        - name: script
+          configMap:
+            name: k6-script
