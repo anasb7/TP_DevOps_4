@@ -4,17 +4,29 @@ Votre objectif est de rendre le guestbook du Jour 3 observable: métriques, dash
 
 Ce dépôt contient tout ce qu'il faut pour déployer le guestbook, pour vous concentrer sur l'observabilité :
 
-- `guestbook/`: le code du guestbook `v1.0.0` et son Dockerfile. Il expose déjà des métriques (`/metrics`), des logs JSON et des traces OpenTelemetry (désactivées par défaut)
-- `deploy/namespaces.yaml` et `deploy/redis/`: les namespaces `guestbook` et `data`, et les manifests de Redis
-- `deploy/guestbook/`: le chart Helm du guestbook (probes, HPA, Ingress, ConfigMap)
-- `deploy/k6/`: le test de charge (Job k6, 17 minutes)
-- `deploy/monitoring/`: le point de départ de la PrometheusRule de l'exercice 5
+```text
+.
+├── cours/                        les slides du Jour 4
+├── guestbook/                    le code du guestbook v1.0.0
+│   ├── main.go                   routes et handlers
+│   ├── metrics.go                métriques Prometheus et logs JSON         (ex. 0, 3)
+│   ├── tracing.go                traces OpenTelemetry, désactivées          (ex. 9)
+│   └── Dockerfile
+├── deploy/
+│   ├── namespaces.yaml           namespaces guestbook et data               (ex. 0)
+│   ├── redis/                    Redis et son volume                        (ex. 0)
+│   ├── guestbook/                chart Helm du guestbook                    (ex. 0, 1, 3, 9, 10)
+│   └── k6/                       test de charge, Job k6 de 17 minutes       (ex. 4, 5, 6)
+├── exercise-5/
+│   └── prometheusrule.yaml       point de départ de l'exercice 5
+└── README.md
+```
 
-Rangez les ressources de monitoring que vous écrivez (ServiceMonitor, PrometheusRule, Probe...) dans `deploy/monitoring/`, et les fichiers de valeurs des charts que vous installez à côté.
+Pour chaque exercice, créez un dossier `exercise-N/` avec un `README.md` (votre doc et votre fiche d'apprentissage) et les fichiers que vous écrivez (valeurs de charts, ressources de monitoring, expériences de chaos...). Le guestbook, son chart et le test de charge restent dans `guestbook/` et `deploy/`: quand vous les modifiez, notez dans le `README.md` de l'exercice ce que vous avez changé et pourquoi (ou le `git diff`).
 
 ## Fiche d'apprentissages
 
-Pour l'évaluation, merci de remplir une fiche d'apprentissage pour chaque exercice réalisé.
+Pour l'évaluation, merci de remplir une fiche d'apprentissage pour chaque exercice réalisé, dans le `README.md` de son dossier `exercise-N/`.
 Cette fiche aura le template suivant :
 
 ```markdown
@@ -34,7 +46,7 @@ Court résumé de l’objectif visé
 
 ## N'oubliez pas !
 
-Créez-vous une doc en markdown dans ce dépôt, pour garder une trace de ce que vous faites, des commandes que vous utilisez, des erreurs que vous rencontrez et comment vous les avez résolues.
+Tenez votre doc dans le `README.md` de chaque `exercise-N/`, pour garder une trace de ce que vous faites, des commandes que vous utilisez, des erreurs que vous rencontrez et comment vous les avez résolues.
 
 ---
 
@@ -45,6 +57,8 @@ Créez-vous une doc en markdown dans ce dépôt, pour garder une trace de ce que
 Prometheus, Grafana, Loki et Chaos Mesh consomment des ressources, et la résilience ne se teste pas sur un seul nœud. Il vous faut un cluster plus costaud qu'au Jour 3, et une nouvelle version du guestbook qui expose ses métriques.
 
 ### Comment
+
+**Fichiers**: `guestbook/`, `deploy/namespaces.yaml`, `deploy/redis/`, `deploy/guestbook/`
 
 1. Installez les outils suivants, en plus de ceux du Jour 3 (minikube, kubectl, Docker, Helm, k9s, stern, kubens) :
 
@@ -94,6 +108,8 @@ Le scheduler place les pods là où il y a de la place, pas forcément de maniè
 
 ### Comment
 
+**Fichiers**: `deploy/guestbook/templates/deployment.yaml`, `deploy/guestbook/values.yaml`
+
 1. **Observez la répartition actuelle** des pods sur les nœuds
 2. **Ajoutez des Topology Spread Constraints** au Deployment du chart `deploy/guestbook`
 3. **Déployez** avec `helm upgrade` et observez la nouvelle répartition
@@ -122,8 +138,10 @@ Le scheduler place les pods là où il y a de la place, pas forcément de maniè
 
 ### Comment
 
+**Fichiers**: `exercise-2/monitoring.yaml` (à créer)
+
 1. **Ajoutez le repository Helm** `prometheus-community`
-2. **Installez `kube-prometheus-stack`** dans un namespace `monitoring`
+2. **Installez `kube-prometheus-stack`** dans un namespace `monitoring`, avec vos valeurs dans `exercise-2/monitoring.yaml`
 3. **Accédez aux interfaces** de Prometheus, Alertmanager et Grafana (port-forward)
 4. **Explorez les dashboards Kubernetes par défaut**: consommation des nœuds, des namespaces, des pods du guestbook
 5. **Explorez Prometheus**: la page `Status > Targets`, et quelques requêtes PromQL (`up`, `node_memory_MemAvailable_bytes`)
@@ -149,11 +167,13 @@ Les dashboards par défaut montrent les ressources (méthode USE), pas ce que vi
 
 ### Comment
 
+**Fichiers**: `guestbook/metrics.go`, `exercise-3/servicemonitor.yaml` (à créer)
+
 1. **Lisez le code** de `guestbook/metrics.go`: comment `http_requests_total` est-elle déclarée et incrémentée ? Pourquoi le middleware utilise-t-il `recover()` ?
 2. **Ajoutez un histogramme `http_request_duration_seconds`** avec les labels `handler` et `method`
    - Choisissez des buckets adaptés au SLO de latence de l'exercice 5: 95% des lectures et écritures de messages (`/lrange`, `/rpush`) en moins de 400 ms
 3. **Construisez l'image `guestbook:v1.1.0`**, chargez-la dans minikube et déployez-la (`helm upgrade ... --set image.tag=v1.1.0`)
-4. **Faites scraper le guestbook par Prometheus**: écrivez un ServiceMonitor (`deploy/monitoring/servicemonitor.yaml`) et appliquez-le dans le namespace `guestbook`
+4. **Faites scraper le guestbook par Prometheus**: écrivez un ServiceMonitor (`exercise-3/servicemonitor.yaml`) et appliquez-le dans le namespace `guestbook`
 5. **Vérifiez** dans Prometheus que la target du guestbook est `UP` et que vos métriques remontent
 
 ### Indices
@@ -176,6 +196,8 @@ Les dashboards par défaut montrent les ressources (méthode USE), pas ce que vi
 La méthode RED (Rate, Errors, Duration) résume la santé d'un service vue par ses utilisateurs. Un dashboard RED est le premier écran qu'on ouvre pendant un incident.
 
 ### Comment
+
+**Fichiers**: `deploy/k6/`, `exercise-4/` (captures et analyse)
 
 1. **Créez un dashboard** `Guestbook` dans Grafana avec 3 panels :
    - **Rate**: requêtes par seconde, par handler
@@ -215,16 +237,18 @@ Alerter sur chaque pic d'erreurs épuise l'équipe, alerter quand le budget du m
 
 ### Comment
 
+**Fichiers**: `exercise-5/prometheusrule.yaml`, `exercise-5/alertmanager.yaml` (à créer)
+
 1. **Définissez les SLO** du guestbook dans votre doc :
    - Disponibilité: 99% des requêtes sans erreur 5xx sur 30 jours
    - Latence: 95% des lectures et écritures de messages (`/lrange`, `/rpush`) en moins de 400 ms
-2. **Lisez la PrometheusRule fournie** (`deploy/monitoring/prometheusrule.yaml`): les recording rules du taux d'erreur sur 5m, 30m, 1h et 6h, et l'alerte burn rate rapide (1h et 5m). Que représente le `14.4` ?
+2. **Lisez la PrometheusRule fournie** (`exercise-5/prometheusrule.yaml`): les recording rules du taux d'erreur sur 5m, 30m, 1h et 6h, et l'alerte burn rate rapide (1h et 5m). Que représente le `14.4` ?
 3. **Complétez-la** :
    - l'alerte burn rate lente (6h et 30m), avec son annotation `runbook_url`
    - une alerte `GuestbookDown`: toutes les instances du guestbook sont down, ou il n'y en a plus aucune
    - une alerte sur la cause, avec la gauge `guestbook_redis_up` fournie par le guestbook (mise à jour par `/healthz`)
-   - remplacez `<your-account>` dans les `runbook_url`: elles doivent pointer vers les runbooks de votre dépôt (exercice 7)
-4. **Configurez Alertmanager**: routez les alertes du namespace `guestbook` vers un receiver de votre choix (webhook, Slack, Discord...)
+   - remplacez `<your-account>` dans les `runbook_url`: elles doivent pointer vers le runbook de votre dépôt (`exercise-7/`)
+4. **Configurez Alertmanager** (`exercise-5/alertmanager.yaml`, à passer en plus de `exercise-2/monitoring.yaml` au `helm upgrade` de la stack): routez les alertes du namespace `guestbook` vers un receiver de votre choix (webhook, Slack, Discord...)
 5. **Provoquez l'alerte burn rate**: relancez le test k6, attendez la fin de la montée en charge (1 minute), puis remplacez la liste des messages par une chaîne (`redis-cli set guestbook oops`). Suivez l'alerte de `inactive` à `pending` puis `firing`, puis sa résolution après `redis-cli del guestbook`
 6. **Coupez Redis** (0 replica): quelles alertes se déclenchent ? Que voient les utilisateurs, et que voient les métriques du guestbook ? Pourquoi ?
 
@@ -256,9 +280,11 @@ Nos alertes se déclenchent-elles vraiment ? Le guestbook survit-il vraiment à 
 
 ### Comment
 
-1. **Installez Chaos Mesh** avec son chart Helm dans un namespace `chaos-mesh`
+**Fichiers**: `exercise-6/chaos-mesh.yaml`, et vos expériences dans `exercise-6/` (à créer)
+
+1. **Installez Chaos Mesh** avec son chart Helm dans un namespace `chaos-mesh` (valeurs dans `exercise-6/chaos-mesh.yaml`)
 2. **Écrivez votre hypothèse** dans votre doc: *"si un pod du guestbook est tué, le taux d'erreur reste sous 1% et aucune alerte ne se déclenche"*
-3. **Créez une expérience `PodChaos`** (`pod-kill`) qui cible un pod du guestbook, puis un `Schedule` qui la rejoue toutes les 2 minutes
+3. **Créez une expérience `PodChaos`** (`pod-kill`, dans `exercise-6/`) qui cible un pod du guestbook, puis un `Schedule` qui la rejoue toutes les 2 minutes
 4. **Relancez le test de charge k6** et observez le dashboard RED et les alertes pendant les expériences
 5. **Concluez**: l'hypothèse est-elle vérifiée ? Sinon, corrigez (probes, replicas, Topology Spread Constraints...) et recommencez
 6. **Allez plus loin**: une expérience `NetworkChaos` qui ajoute 500 ms de latence aux réponses de Redis. Observez le panel Duration du dashboard: la latence affichée correspond-elle aux 500 ms injectés ? Pourquoi ?
@@ -286,11 +312,13 @@ Une alerte sans runbook réveille quelqu'un qui ne sait pas quoi faire. Un incid
 
 ### Comment
 
-1. **Écrivez un runbook** `runbooks/guestbook-error-budget-burn.md`, vers lequel pointe le `runbook_url` de l'exercice 5 :
+**Fichiers**: `exercise-7/guestbook-error-budget-burn.md`, `exercise-7/postmortem.md` (à créer)
+
+1. **Écrivez un runbook** `exercise-7/guestbook-error-budget-burn.md`, vers lequel pointe le `runbook_url` de l'exercice 5 :
    - Ce que signifie l'alerte et son impact utilisateur
    - Les premiers diagnostics (dashboards, requêtes PromQL, commandes `kubectl`)
    - Les actions de mitigation
-2. **Écrivez le post-mortem blameless** de l'incident Redis de l'exercice 5 ou de l'expérience `NetworkChaos` de l'exercice 6 :
+2. **Écrivez le post-mortem blameless** (`exercise-7/postmortem.md`) de l'incident Redis de l'exercice 5 ou de l'expérience `NetworkChaos` de l'exercice 6 :
    - Résumé, impact (durée, % d'erreurs, budget consommé), timeline, cause racine, ce qui a bien marché, actions correctives avec un responsable
 
 ### Indices
@@ -310,6 +338,8 @@ Une alerte sans runbook réveille quelqu'un qui ne sait pas quoi faire. Un incid
 Les métriques disent qu'il y a un problème, les logs disent pourquoi. Mais `kubectl logs` ne montre que les pods vivants, un par un. Loki centralise les logs de tout le cluster et les rend interrogeables depuis Grafana.
 
 ### Comment
+
+**Fichiers**: `exercise-8/loki.yaml`, `exercise-8/alloy.yaml` (à créer)
 
 1. **Installez Loki** (mode `SingleBinary`) et **Grafana Alloy** pour collecter les logs des pods (Promtail, son prédécesseur, est déprécié)
 2. **Ajoutez Loki** comme datasource dans Grafana
@@ -336,6 +366,8 @@ Une trace suit une requête à travers tous les composants qu'elle traverse et m
 
 ### Comment
 
+**Fichiers**: `guestbook/tracing.go` (lecture), `deploy/guestbook/templates/configmap.yaml`
+
 1. **Lisez `guestbook/tracing.go`**: le guestbook est déjà instrumenté (un span par requête HTTP, un span par commande Redis), mais le tracing est désactivé
 2. **Installez Grafana Tempo** et ajoutez-le comme datasource dans Grafana
 3. **Activez le tracing** du guestbook en lui donnant l'adresse OTLP de Tempo
@@ -361,9 +393,11 @@ Les métriques internes (white-box) ne voient pas une panne de l'Ingress ou du D
 
 ### Comment
 
+**Fichiers**: `exercise-10/blackbox.yaml`, `exercise-10/probe.yaml`, `exercise-10/prometheusrule-blackbox.yaml` (à créer)
+
 1. **Installez `prometheus-blackbox-exporter`** avec son chart Helm
-2. **Créez une `Probe`** (CRD de l'opérateur Prometheus, dans `deploy/monitoring/`) qui teste `http://guestbook.local/lrange/guestbook` via l'Ingress toutes les 30 s, comme le fait l'UI
-3. **Ajoutez une alerte** sur `probe_success == 0`
+2. **Créez une `Probe`** (CRD de l'opérateur Prometheus, `exercise-10/probe.yaml`) qui teste `http://guestbook.local/lrange/guestbook` via l'Ingress toutes les 30 s, comme le fait l'UI
+3. **Ajoutez une alerte** sur `probe_success == 0` (une PrometheusRule `exercise-10/prometheusrule-blackbox.yaml`)
 4. **Cassez l'Ingress** (désactivez-le dans `values.yaml`): quelle alerte se déclenche, la vôtre ou celles de l'exercice 5 ?
 
 ### Indices

@@ -1,5 +1,5 @@
 # Starting point of exercise 5: complete the TODOs, then
-#   kubectl apply -f deploy/monitoring/prometheusrule.yaml
+#   kubectl apply -f exercise-5/prometheusrule.yaml
 #
 # SLOs of the guestbook
 #   availability: 99% of the requests without 5xx           => error budget 1%   (0.01)
@@ -52,7 +52,7 @@ spec:
           annotations:
             summary: Guestbook burns its error budget fast (2% of the month in 1h)
             description: "{{ $value | humanizePercentage }} of the requests fail."
-            runbook_url: https://github.com/<your-account>/devops-class-4/blob/main/runbooks/guestbook-error-budget-burn.md
+            runbook_url: https://github.com/<your-account>/devops-class-4/blob/main/exercise-7/guestbook-error-budget-burn.md
         # TODO: GuestbookErrorBudgetBurnSlow, 6x the budget over 6h and 30m, for: 15m, severity: warning
 
     # TODO: a group "guestbook-health" with
