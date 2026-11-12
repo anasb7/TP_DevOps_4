@@ -71,6 +71,7 @@ Prometheus, Grafana, Loki et Chaos Mesh consomment des ressources, et la résili
   minikube start -p observability --nodes 2 --cpus 3 --memory 4096
   minikube -p observability addons enable metrics-server
   minikube -p observability addons enable ingress
+  kubectl wait -n ingress-nginx --for=condition=Ready pod -l app.kubernetes.io/component=controller --timeout=5m
   ```
 
 3. Construisez le guestbook `v1.0.0` et chargez-le dans minikube :
@@ -91,6 +92,7 @@ Prometheus, Grafana, Loki et Chaos Mesh consomment des ressources, et la résili
 ### Indices
 
 - `minikube profile list` affiche vos clusters, `minikube profile observability` change le profil par défaut
+- Toute la configuration du guestbook passe par `deploy/guestbook/values.yaml`: évitez `--set` et `--reuse-values`, un `helm upgrade` suivant reviendrait aux valeurs du fichier (ou ignorerait les nouvelles valeurs du chart)
 - Arrêtez le cluster du Jour 3 pour libérer de la mémoire: `minikube stop`
 
 ### Vérifications
@@ -172,7 +174,7 @@ Les dashboards par défaut montrent les ressources (méthode USE), pas ce que vi
 1. **Lisez le code** de `guestbook/metrics.go`: comment `http_requests_total` est-elle déclarée et incrémentée ? Pourquoi le middleware utilise-t-il `recover()` ?
 2. **Ajoutez un histogramme `http_request_duration_seconds`** avec les labels `handler` et `method`
    - Choisissez des buckets adaptés au SLO de latence de l'exercice 5: 95% des lectures et écritures de messages (`/lrange`, `/rpush`) en moins de 400 ms
-3. **Construisez l'image `guestbook:v1.1.0`**, chargez-la dans minikube et déployez-la (`helm upgrade ... --set image.tag=v1.1.0`)
+3. **Construisez l'image `guestbook:v1.1.0`**, chargez-la dans minikube et déployez-la: changez `image.tag` dans `deploy/guestbook/values.yaml`, puis `helm upgrade guestbook deploy/guestbook -n guestbook`
 4. **Faites scraper le guestbook par Prometheus**: écrivez un ServiceMonitor (`exercise-3/servicemonitor.yaml`) et appliquez-le dans le namespace `guestbook`
 5. **Vérifiez** dans Prometheus que la target du guestbook est `UP` et que vos métriques remontent
 
