@@ -151,7 +151,7 @@ Les dashboards par défaut montrent les ressources (méthode USE), pas ce que vi
 
 1. **Lisez le code** de `guestbook/metrics.go`: comment `http_requests_total` est-elle déclarée et incrémentée ? Pourquoi le middleware utilise-t-il `recover()` ?
 2. **Ajoutez un histogramme `http_request_duration_seconds`** avec les labels `handler` et `method`
-   - Choisissez des buckets adaptés au SLO de l'exercice 5: 95% des requêtes en moins de 400 ms
+   - Choisissez des buckets adaptés au SLO de latence de l'exercice 5: 95% des lectures et écritures de messages (`/lrange`, `/rpush`) en moins de 400 ms
 3. **Construisez l'image `guestbook:v1.1.0`**, chargez-la dans minikube et déployez-la (`helm upgrade ... --set image.tag=v1.1.0`)
 4. **Faites scraper le guestbook par Prometheus**: écrivez un ServiceMonitor (`deploy/monitoring/servicemonitor.yaml`) et appliquez-le dans le namespace `guestbook`
 5. **Vérifiez** dans Prometheus que la target du guestbook est `UP` et que vos métriques remontent
@@ -181,7 +181,7 @@ La méthode RED (Rate, Errors, Duration) résume la santé d'un service vue par 
    - **Rate**: requêtes par seconde, par handler
    - **Errors**: pourcentage de réponses 5xx
    - **Duration**: p50, p95 et p99 de la latence
-2. **Lancez le test de charge** fourni et observez le dashboard, ainsi que le HPA. Il dure 17 minutes: laissez-le tourner, il sert aussi aux exercices 5 et 6
+2. **Lancez le test de charge** fourni (17 minutes) et observez le dashboard, ainsi que le HPA
 
    ```bash
    kubectl create configmap k6-script -n guestbook --from-file=deploy/k6/load-test.js
@@ -198,7 +198,8 @@ La méthode RED (Rate, Errors, Duration) résume la santé d'un service vue par 
 - `rate()` s'applique à un counter, sur une fenêtre au moins 4 fois plus longue que l'intervalle de scrape
 - `histogram_quantile()` s'applique à `sum by (le) (rate(..._bucket[5m]))`
 - Pourquoi un p99 plutôt qu'une moyenne ? Comparez les deux pendant la charge
-- Pour relancer le test: `kubectl delete job -n guestbook k6-load-test`, puis `kubectl apply` à nouveau
+- Les probes du kubelet (`/healthz`) et les scrapes de Prometheus (`/metrics`) ne sont pas des utilisateurs: excluez-les de vos panels (`handler!~"..."`)
+- Sans aucune erreur, le panel Errors affiche "No data" plutôt que 0: pourquoi ? Cherchez `or vector(0)`
 
 ### Vérifications
 
@@ -222,8 +223,9 @@ Alerter sur chaque pic d'erreurs épuise l'équipe, alerter quand le budget du m
    - l'alerte burn rate lente (6h et 30m), avec son annotation `runbook_url`
    - une alerte `GuestbookDown`: toutes les instances du guestbook sont down, ou il n'y en a plus aucune
    - une alerte sur la cause, avec la gauge `guestbook_redis_up` fournie par le guestbook (mise à jour par `/healthz`)
+   - remplacez `<your-account>` dans les `runbook_url`: elles doivent pointer vers les runbooks de votre dépôt (exercice 7)
 4. **Configurez Alertmanager**: routez les alertes du namespace `guestbook` vers un receiver de votre choix (webhook, Slack, Discord...)
-5. **Provoquez l'alerte burn rate**: pendant le test k6, remplacez la liste des messages par une chaîne (`redis-cli set guestbook oops`). Suivez l'alerte de `inactive` à `pending` puis `firing`, puis sa résolution après `redis-cli del guestbook`
+5. **Provoquez l'alerte burn rate**: relancez le test k6, attendez la fin de la montée en charge (1 minute), puis remplacez la liste des messages par une chaîne (`redis-cli set guestbook oops`). Suivez l'alerte de `inactive` à `pending` puis `firing`, puis sa résolution après `redis-cli del guestbook`
 6. **Coupez Redis** (0 replica): quelles alertes se déclenchent ? Que voient les utilisateurs, et que voient les métriques du guestbook ? Pourquoi ?
 
 ### Indices
@@ -232,14 +234,15 @@ Alerter sur chaque pic d'erreurs épuise l'équipe, alerter quand le budget du m
 - Les PrometheusRules doivent être sélectionnées par Prometheus: revoyez les valeurs de l'exercice 2
 - Le champ `for:` évite d'alerter sur un pic isolé
 - Une alerte ne sert que si elle arrive à Alertmanager avec le label sur lequel vous routez: vérifiez les labels de vos alertes dans Prometheus (`Alerts`), en particulier après un `sum`, un `max` ou un `absent()`
-- L'alerte rapide met quelques minutes à se déclencher, et autant à se résoudre: gardez le test k6 en cours pendant tout l'exercice
-- Les probes du kubelet et les scrapes de Prometheus ne sont pas des utilisateurs: excluez `/healthz` et `/metrics` de vos SLI
+- L'alerte rapide met quelques minutes à se déclencher, et autant à se résoudre: le test k6 doit tourner jusqu'à la résolution. Sans trafic, le taux d'erreur n'a plus de valeur et l'alerte se résout pour une mauvaise raison
+- Pour relancer le test k6: `kubectl delete job -n guestbook k6-load-test`, puis `kubectl apply -f deploy/k6/k6-job.yaml`
+- Pourquoi les recording rules fournies excluent-elles `/healthz` et `/metrics` ?
 - Sans receiver externe, [webhook.site](https://webhook.site) ou un simple pod `echo-server` font l'affaire
 - `amtool` (dans le pod Alertmanager) permet de tester le routage et de poser des silences
 
 ### Vérifications
 
-- [ ] Mes recording rules et mes alertes apparaissent dans Prometheus (`Status > Rules`, `Alerts`)
+- [ ] Mes alertes apparaissent dans Prometheus (`Status > Rules`, `Alerts`), avec le label `namespace`
 - [ ] L'alerte burn rate passe en `firing` quand le guestbook renvoie des 500, et se résout ensuite
 - [ ] Je sais expliquer pourquoi l'alerte burn rate ne se déclenche pas quand Redis est coupé
 - [ ] L'alerte arrive dans mon receiver, avec son `runbook_url`
@@ -256,7 +259,7 @@ Nos alertes se déclenchent-elles vraiment ? Le guestbook survit-il vraiment à 
 1. **Installez Chaos Mesh** avec son chart Helm dans un namespace `chaos-mesh`
 2. **Écrivez votre hypothèse** dans votre doc: *"si un pod du guestbook est tué, le taux d'erreur reste sous 1% et aucune alerte ne se déclenche"*
 3. **Créez une expérience `PodChaos`** (`pod-kill`) qui cible un pod du guestbook, puis un `Schedule` qui la rejoue toutes les 2 minutes
-4. **Gardez le test de charge k6 en cours** (relancez-le si besoin) et observez le dashboard RED et les alertes
+4. **Relancez le test de charge k6** et observez le dashboard RED et les alertes pendant les expériences
 5. **Concluez**: l'hypothèse est-elle vérifiée ? Sinon, corrigez (probes, replicas, Topology Spread Constraints...) et recommencez
 6. **Allez plus loin**: une expérience `NetworkChaos` qui ajoute 500 ms de latence aux réponses de Redis. Observez le panel Duration du dashboard: la latence affichée correspond-elle aux 500 ms injectés ? Pourquoi ?
 

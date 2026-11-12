@@ -14,8 +14,8 @@ export const options = {
       timeUnit: '1s',
       preAllocatedVUs: 50,
       maxVUs: 300,
-      // Long steady phase: one run covers exercises 4 (dashboard), 5 (alerts) and 6 (chaos).
-      // Alerts need several minutes of traffic to fire *and* to resolve.
+      // Long steady phase: burn-rate alerts (exercise 5) need several minutes of traffic
+      // to fire *and* to resolve; chaos experiments (exercise 6) need a steady load to compare with.
       stages: [
         { duration: '1m', target: 200 },  // ramp up
         { duration: '15m', target: 200 }, // sustained load: the HPA scales out
