@@ -1,0 +1,19 @@
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    retention: 7d
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+
+grafana:
+  adminPassword: admin
+
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
