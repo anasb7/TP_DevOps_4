@@ -38,7 +38,14 @@ var httpRequestsTotal = promauto.NewCounterVec(
 	[]string{"handler", "method", "code"},
 )
 
-// TODO (exercise 3): http_request_duration_seconds
+var httpRequestDuration = promauto.NewHistogramVec(
+	prometheus.HistogramOpts{
+		Name:    "http_request_duration_seconds",
+		Help:    "HTTP request latency in seconds, by route and method.",
+		Buckets: []float64{0.01, 0.025, 0.05, 0.1, 0.2, 0.4, 0.8, 1.6, 3.2},
+	},
+	[]string{"handler", "method"},
+)
 
 // A cause metric: alert on it to know *why* users get errors, not to page someone.
 var redisUp = promauto.NewGauge(prometheus.GaugeOpts{
@@ -84,6 +91,7 @@ func MetricsMiddleware(router *mux.Router) negroni.HandlerFunc {
 			}
 			httpRequestsTotal.WithLabelValues(handler, req.Method, strconv.Itoa(code)).Inc()
 			duration := time.Since(start)
+			httpRequestDuration.WithLabelValues(handler, req.Method).Observe(duration.Seconds())
 			logger.Log(req.Context(), logLevel(code), "request",
 				"method", req.Method,
 				"handler", handler,

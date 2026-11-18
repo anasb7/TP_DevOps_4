@@ -2,7 +2,7 @@ replicaCount: 3
 
 image:
   repository: guestbook
-  tag: v1.0.0
+  tag: v1.1.0
   # Never: the image is loaded into minikube with `minikube image load`
   pullPolicy: Never
 
